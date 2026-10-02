@@ -1,0 +1,16 @@
+fastapi>=0.135,<1
+uvicorn[standard]>=0.41,<1
+SQLAlchemy>=2.0.48,<2.1
+alembic>=1.18,<2
+psycopg[binary]>=3.3,<4
+pydantic-settings>=2.13,<3
+email-validator>=2.3,<3
+PyJWT>=2.12,<3
+pwdlib[argon2]>=0.3,<1
+python-multipart>=0.0.22,<1
+reportlab>=4.4,<5
+python-docx>=1.2,<2
+qrcode[pil]>=8.2,<9
+tzdata>=2026.1
+pytest>=9,<10
+ruff>=0.15,<1

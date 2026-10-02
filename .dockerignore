@@ -1,0 +1,12 @@
+.env
+.env.*
+.verification
+logs
+.venv
+venv
+*.db
+storage
+__pycache__
+.pytest_cache
+.ruff_cache
+tests
