@@ -103,6 +103,9 @@ def create_school(db, data):
     db.flush()
     assign_role(db, user)
     db.add(Term(school_id=school.id, session_id=session.id, name=data.term_name))
+    from .curriculum import seed_subjects
+
+    seed_subjects(db, school)
     for name, weight in [("CA 1", 20), ("CA 2", 20), ("Exam", 60)]:
         db.add(AssessmentComponent(school_id=school.id, name=name, weight=weight, max_score=weight))
     scale = GradingScale(school_id=school.id, name="Default grading")

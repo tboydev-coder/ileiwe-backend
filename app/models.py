@@ -112,6 +112,7 @@ class Subject(TenantRecord):
     name: Mapped[str] = mapped_column(String(120))
     code: Mapped[str] = mapped_column(String(30))
     category: Mapped[str] = mapped_column(String(80), default="General")
+    school_level: Mapped[str] = mapped_column(String(20), default="PRIMARY")
     compulsory: Mapped[bool] = mapped_column(default=True)
     active: Mapped[bool] = mapped_column(default=True)
     __table_args__ = (UniqueConstraint("school_id", "code"),)

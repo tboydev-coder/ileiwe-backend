@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from . import models as m
 from .core.database import get_db
 from .core.security import current_user, require, audit, passwords, assign_role
+from .curriculum import PRIMARY_SUBJECTS, SECONDARY_SUBJECTS
 
 router = APIRouter(tags=["School directories"])
 
@@ -20,7 +21,7 @@ SPECS = {
     "terms": (m.Term, "academics", "session_id name start_date end_date active"),
     "class-levels": (m.ClassLevel, "academics", "name sort_order"),
     "classes": (m.ClassArm, "academics", "level_id name teacher_id"),
-    "subjects": (m.Subject, "academics", "name code category compulsory active"),
+    "subjects": (m.Subject, "academics", "name code category school_level compulsory active"),
     "assignments": (m.SubjectAssignment, "academics", "class_id subject_id teacher_id"),
     "students": (
         m.Student,
@@ -64,6 +65,7 @@ OPTIONS = {
     "gender": ["Female", "Male", "Prefer not to say"],
     "channel": ["EMAIL"],
     "audience": ["ALL", "STAFF", "PARENTS"],
+    "school_level": ["PRIMARY", "SECONDARY"],
 }
 
 
@@ -425,6 +427,14 @@ def catalog(user=Depends(current_user)):
                     "max_length": getattr(col.type, "length", None),
                 }
             )
+            if name == "subjects" and field == "name":
+                result[name]["fields"][-1]["curriculum_options"] = [
+                    {"name": subject_name, "level": "PRIMARY"}
+                    for subject_name, _, _ in PRIMARY_SUBJECTS
+                ] + [
+                    {"name": subject_name, "level": "SECONDARY"}
+                    for subject_name, _, _ in SECONDARY_SUBJECTS
+                ]
     return result
 
 
