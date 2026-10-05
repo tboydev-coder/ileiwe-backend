@@ -30,6 +30,12 @@ def test_ceo_dashboard_and_school_revocation(client):
     schools = client.get("/api/v1/ceo/schools?search=CEO%20Test", headers=headers)
     assert schools.status_code == 200, schools.text
     school = schools.json()["items"][0]
+    assert school["users"] == 1
+    assert school["students"] == 0
+    assert school["staff"] == 0
+    school_detail = client.get(f"/api/v1/ceo/schools/{school['id']}", headers=headers)
+    assert school_detail.status_code == 200, school_detail.text
+    owner_id = school_detail.json()["users"][0]["id"]
     revoked = client.post(
         f"/api/v1/ceo/schools/{school['id']}/revoke",
         headers=headers,
@@ -40,6 +46,12 @@ def test_ceo_dashboard_and_school_revocation(client):
     assert client.post(
         "/api/v1/auth/login", json={"email": "owner-ceo@example.com", "password": "Owner-password-2026"}
     ).status_code == 401
+    blocked = client.patch(
+        f"/api/v1/ceo/schools/{school['id']}/users/{owner_id}",
+        headers=headers,
+        json={"active": True},
+    )
+    assert blocked.status_code == 409, blocked.text
     restored = client.post(
         f"/api/v1/ceo/schools/{school['id']}/restore",
         headers=headers,
@@ -51,10 +63,32 @@ def test_ceo_dashboard_and_school_revocation(client):
         "/api/v1/auth/login", json={"email": "owner-ceo@example.com", "password": "Owner-password-2026"}
     )
     assert owner_login.status_code == 200, owner_login.text
+    owner_headers = {"Authorization": "Bearer " + owner_login.json()["access_token"]}
+    created = client.post(
+        "/api/v1/records/users",
+        headers=owner_headers,
+        json={"name": "School Teacher", "email": "teacher-ceo@example.com", "password": "Teacher-password-2026", "role": "TEACHER"},
+    )
+    assert created.status_code == 201, created.text
+    teacher_id = created.json()["id"]
     restored_school = client.get(f"/api/v1/ceo/schools/{school['id']}", headers=headers)
     assert restored_school.status_code == 200, restored_school.text
     assert restored_school.json()["school"]["status"] == "ACTIVE"
     assert restored_school.json()["users"][0]["email"] == "owner-ceo@example.com"
+    disabled = client.patch(
+        f"/api/v1/ceo/schools/{school['id']}/users/{teacher_id}",
+        headers=headers,
+        json={"active": False},
+    )
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json()["user"]["active"] is False
+    enabled = client.patch(
+        f"/api/v1/ceo/schools/{school['id']}/users/{teacher_id}",
+        headers=headers,
+        json={"active": True},
+    )
+    assert enabled.status_code == 200, enabled.text
+    assert enabled.json()["user"]["active"] is True
 
 
 def test_ceo_dashboard_rejects_school_owner(client, school):

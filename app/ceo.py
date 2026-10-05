@@ -47,10 +47,12 @@ def school_metrics(db, start: date, end: date):
     teacher_count = select(func.count(m.User.id)).where(
         m.User.school_id == m.School.id, m.User.role == "TEACHER", m.User.active.is_(True)
     ).correlate(m.School).scalar_subquery()
-    staff_count = count_subquery(m.Staff, m.Staff.active.is_(True))
+    staff_count = count_subquery(m.Staff)
     parent_count = count_subquery(m.Parent)
     active_users = count_subquery(m.User, m.User.active.is_(True))
     inactive_users = count_subquery(m.User, m.User.active.is_(False))
+    user_count = count_subquery(m.User)
+    staff_count = count_subquery(m.Staff)
     class_count = count_subquery(m.ClassArm)
     subject_count = count_subquery(m.Subject)
     present = select(func.count(m.Attendance.id)).where(
@@ -84,10 +86,11 @@ def school_metrics(db, start: date, end: date):
     return {
         "students": student_count,
         "teachers": teacher_count,
-        "staff": staff_count,
         "parents": parent_count,
         "active_users": active_users,
         "inactive_users": inactive_users,
+        "users": user_count,
+        "staff": staff_count,
         "classes": class_count,
         "subjects": subject_count,
         "attendance_rate": attendance_rate,
@@ -108,6 +111,10 @@ def serialize_school(row):
 class AccessAction(BaseModel):
     confirmation: bool = False
     reason: str = Field(default="", max_length=500)
+
+
+class AccountAccessAction(BaseModel):
+    active: bool
 
 
 def range_dates(from_date: date | None, to_date: date | None):
@@ -181,7 +188,8 @@ def dashboard(
     breakdown = db.execute(select(
         m.School.name,
         breakdown_metrics["students"].label("students"),
-        breakdown_metrics["teachers"].label("teachers"),
+        breakdown_metrics["staff"].label("staff"),
+        breakdown_metrics["users"].label("users"),
         breakdown_metrics["attendance_rate"].label("attendance_rate"),
         breakdown_metrics["fees_collected"].label("fees_collected"),
     ).where(business_school()).order_by(desc(breakdown_metrics["students"])).limit(12)).all()
@@ -236,7 +244,8 @@ def schools(
     metrics = school_metrics(db, start, end)
     query = select(
         m.School.id, m.School.name, m.School.email, m.School.address, m.School.school_type,
-        m.School.status, m.School.created_at, *metrics.values()
+        m.School.status, m.School.created_at,
+        *[expression.label(name) for name, expression in metrics.items()],
     ).where(business_school())
     if search.strip():
         term = f"%{search.strip()}%"
@@ -262,7 +271,47 @@ def school_detail(school_id: str, user=Depends(current_user), db: Session = Depe
     if not school or school.school_type == "PLATFORM":
         raise HTTPException(404, "School was not found.")
     users = db.scalars(select(m.User).where(m.User.school_id == school_id).order_by(m.User.name)).all()
-    return {"school": serialize(school), "users": [serialize(u) for u in users]}
+    return {
+        "school": serialize(school),
+        "counts": {
+            "users": len(users),
+            "students": db.scalar(select(func.count(m.Student.id)).where(m.Student.school_id == school_id)) or 0,
+            "staff": db.scalar(select(func.count(m.Staff.id)).where(m.Staff.school_id == school_id)) or 0,
+        },
+        "users": [serialize(u) for u in users],
+    }
+
+
+@router.patch("/schools/{school_id}/users/{user_id}")
+def update_school_user(
+    school_id: str,
+    user_id: str,
+    data: AccountAccessAction,
+    user=Depends(current_user),
+    db: Session = Depends(get_db, scope="function"),
+):
+    require_ceo(user)
+    school = db.get(m.School, school_id)
+    account = db.scalar(select(m.User).where(m.User.id == user_id, m.User.school_id == school_id).with_for_update())
+    if not school or school.school_type == "PLATFORM" or not account:
+        raise HTTPException(404, "School user was not found.")
+    if school.status == "REVOKED" and data.active:
+        raise HTTPException(409, "Users cannot be activated while the school is revoked.")
+    if account.role == "SCHOOL_OWNER" and not data.active:
+        raise HTTPException(422, "The school owner account cannot be deactivated.")
+    if account.active != data.active:
+        account.active = data.active
+        account.token_version += 1
+        for token in db.scalars(select(m.AuthToken).where(m.AuthToken.user_id == account.id, m.AuthToken.used.is_(False))):
+            token.used = True
+    record_platform_audit(
+        db,
+        user,
+        school.id,
+        "platform.school_user_access_changed",
+        {"user_id": account.id, "active": account.active},
+    )
+    return {"user": serialize(account)}
 
 
 @router.post("/schools/{school_id}/revoke")
