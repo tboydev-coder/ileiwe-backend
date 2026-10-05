@@ -298,6 +298,9 @@ def restore_school(school_id: str, data: AccessAction, user=Depends(current_user
     school = db.scalar(select(m.School).where(m.School.id == school_id).with_for_update())
     if not school or school.school_type == "PLATFORM":
         raise HTTPException(404, "School was not found.")
+    accounts = db.scalars(select(m.User).where(m.User.school_id == school_id).with_for_update()).all()
+    for account in accounts:
+        account.active = True
     school.status = "ACTIVE"
     record_platform_audit(db, user, school.id, "platform.school_restored", {"reason": data.reason})
-    return {"status": "active", "users_must_sign_in_again": True}
+    return {"status": "active", "affected_users": len(accounts), "users_must_sign_in_again": True}

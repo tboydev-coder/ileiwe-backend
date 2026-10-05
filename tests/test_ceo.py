@@ -46,6 +46,15 @@ def test_ceo_dashboard_and_school_revocation(client):
         json={"confirmation": True},
     )
     assert restored.status_code == 200, restored.text
+    assert restored.json()["affected_users"] == 1
+    owner_login = client.post(
+        "/api/v1/auth/login", json={"email": "owner-ceo@example.com", "password": "Owner-password-2026"}
+    )
+    assert owner_login.status_code == 200, owner_login.text
+    restored_school = client.get(f"/api/v1/ceo/schools/{school['id']}", headers=headers)
+    assert restored_school.status_code == 200, restored_school.text
+    assert restored_school.json()["school"]["status"] == "ACTIVE"
+    assert restored_school.json()["users"][0]["email"] == "owner-ceo@example.com"
 
 
 def test_ceo_dashboard_rejects_school_owner(client, school):
