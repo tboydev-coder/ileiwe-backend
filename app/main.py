@@ -13,7 +13,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from .core.config import get_settings
-from .core.database import migrate, engine
+from .core.database import migrate, engine, SessionLocal
+from .core.security import seed_platform_admin
 from . import (
     auth,
     resources,
@@ -26,6 +27,7 @@ from . import (
     reports,
     accounts,
     portals,
+    ceo,
 )
 
 settings = get_settings()
@@ -37,6 +39,8 @@ logging.basicConfig(level=settings.log_level, format="%(message)s")
 async def lifespan(app):
     if settings.auto_migrate:
         migrate()
+    with SessionLocal.begin() as db:
+        seed_platform_admin(db)
     yield
 
 
@@ -61,6 +65,7 @@ for router in (
     reports.router,
     accounts.router,
     portals.router,
+    ceo.router,
 ):
     app.include_router(router, prefix="/api/v1")
 

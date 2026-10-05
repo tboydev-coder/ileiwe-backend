@@ -79,20 +79,62 @@ def permission_names(role):
 
 
 def seed_roles(db):
-    existing = set(db.scalars(select(Role.name)))
-    if existing:
-        return
-    permissions = {name: Permission(name=name) for name in ALL_PERMISSIONS}
-    db.add_all(permissions.values())
+    permissions = {permission.name: permission for permission in db.scalars(select(Permission))}
+    for name in sorted(ALL_PERMISSIONS - permissions.keys()):
+        permission = Permission(name=name)
+        db.add(permission)
+        permissions[name] = permission
     db.flush()
+    roles = {role.name: role for role in db.scalars(select(Role))}
     for name in sorted(ADMIN | set(PERMISSIONS)):
-        role = Role(name=name)
-        db.add(role)
-        db.flush()
-        db.add_all(RolePermission(role_id=role.id, permission_id=permissions[p].id) for p in permission_names(name))
+        role = roles.get(name)
+        if not role:
+            role = Role(name=name)
+            db.add(role)
+            db.flush()
+            roles[name] = role
+        assigned = set(db.scalars(select(RolePermission.permission_id).where(RolePermission.role_id == role.id)))
+        db.add_all(
+            RolePermission(role_id=role.id, permission_id=permissions[p].id)
+            for p in permission_names(name)
+            if permissions[p].id not in assigned
+        )
     db.flush()
 
 
+def seed_platform_admin(db):
+    """Create the bootstrap platform account once, without resetting its password."""
+    seed_roles(db)
+    admin = db.scalar(select(User).where(User.username == "admin"))
+    if admin:
+        if admin.role != "PLATFORM_SUPER_ADMIN":
+            admin.role = "PLATFORM_SUPER_ADMIN"
+            admin.token_version += 1
+            assign_role(db, admin)
+        return admin
+    school = db.scalar(select(School).where(School.school_type == "PLATFORM"))
+    if not school:
+        school = School(
+            name="Ile-Iwe Platform",
+            email="platform@ile-iwe.local",
+            school_type="PLATFORM",
+            status="ACTIVE",
+        )
+        db.add(school)
+        db.flush()
+    admin = User(
+        school_id=school.id,
+        username="admin",
+        email="admin@ile-iwe.local",
+        name="Platform Administrator",
+        password_hash=passwords.hash("admin"),
+        role="PLATFORM_SUPER_ADMIN",
+        must_change_password=True,
+    )
+    db.add(admin)
+    db.flush()
+    assign_role(db, admin)
+    return admin
 def assign_role(db, user):
     for record in db.scalars(select(UserRole).where(UserRole.user_id == user.id)):
         db.delete(record)

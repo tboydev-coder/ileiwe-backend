@@ -747,7 +747,7 @@ def update_school(data: dict, user=Depends(current_user), db: Session = Depends(
 def platform_schools(user=Depends(current_user), db: Session = Depends(get_db, scope="function")):
     if user.role != "PLATFORM_SUPER_ADMIN":
         raise HTTPException(403, "Platform administrator access is required.")
-    return [serialize(s) for s in db.scalars(select(m.School).order_by(m.School.created_at.desc()))]
+    return [serialize(s) for s in db.scalars(select(m.School).where(m.School.school_type != "PLATFORM").order_by(m.School.created_at.desc()))]
 
 
 @router.post("/platform/schools/{school_id}/{action}")
